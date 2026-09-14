@@ -86,7 +86,7 @@ Filters are locked while a server preview is active. Cancel the current preview 
 
 ## Status and protocol
 
-Addon-to-server communication uses the hidden AzerothCore addon-message transport through `RegisterAddonMessagePrefix`, `SendAddonMessage`, and `CHAT_MSG_ADDON` with the `AzerothCore` prefix.
+Addon-to-server communication uses the hidden AzerothCore addon-message transport through `SendAddonMessage` and `CHAT_MSG_ADDON` with the `AzerothCore` prefix. The prefix registration call is guarded because stock WotLK 3.3.5a predates `RegisterAddonMessagePrefix`; newer clients use it when available. Uncached item information is refreshed through a bounded `OnUpdate` poll instead of relying on a later-client event.
 
 Visible chat is not used as the machine protocol. It remains available only for help, diagnostic status, and normal system messages. Server diagnostics can be requested with:
 

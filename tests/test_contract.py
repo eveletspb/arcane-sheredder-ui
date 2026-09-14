@@ -11,10 +11,15 @@ class AddonContractTest(unittest.TestCase):
     def test_uses_only_hidden_addon_transport(self):
         self.assertIn('local PREFIX = "AzerothCore"', ADDON)
         self.assertIn("SendAddonMessage(PREFIX", ADDON)
+        self.assertIn("if RegisterAddonMessagePrefix then", ADDON)
         self.assertIn("RegisterAddonMessagePrefix(PREFIX)", ADDON)
         self.assertIn('RegisterEvent("CHAT_MSG_ADDON")', ADDON)
         self.assertNotIn("SendChatMessage", ADDON)
         self.assertNotIn("CHAT_MSG_SYSTEM", ADDON)
+
+    def test_uses_stock_wotlk_item_cache_polling(self):
+        self.assertNotIn('RegisterEvent("GET_ITEM_INFO_RECEIVED")', ADDON)
+        self.assertIn("window.needsItemRefresh and now - lastItemRefresh >= 1", ADDON)
 
     def test_parses_every_server_protocol_record(self):
         for record in (
@@ -73,8 +78,8 @@ class AddonContractTest(unittest.TestCase):
 
     def test_targets_wotlk_335a(self):
         self.assertIn("## Interface: 30300", TOC)
+        self.assertIn("## Version: 1.0.1", TOC)
 
 
 if __name__ == "__main__":
     unittest.main()
-

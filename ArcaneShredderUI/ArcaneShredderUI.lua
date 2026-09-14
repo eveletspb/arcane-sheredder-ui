@@ -840,18 +840,17 @@ end
 
 Addon:RegisterEvent("PLAYER_LOGIN")
 Addon:RegisterEvent("CHAT_MSG_ADDON")
-Addon:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 Addon:SetScript("OnEvent", function(_, event, ...)
     if event == "PLAYER_LOGIN" then
         InitializeDatabase()
-        RegisterAddonMessagePrefix(PREFIX)
+        if RegisterAddonMessagePrefix then
+            RegisterAddonMessagePrefix(PREFIX)
+        end
         CreateWindow()
         helloScheduledAt = GetTime() + 1
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, message = ...
         HandleAddonMessage(prefix, message)
-    elseif event == "GET_ITEM_INFO_RECEIVED" and window and window:IsShown() then
-        RebuildRows()
     end
 end)
 
