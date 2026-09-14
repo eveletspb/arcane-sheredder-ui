@@ -82,6 +82,10 @@ class AddonContractTest(unittest.TestCase):
         self.assertLess(request.index("local requestId = SendRequest("), request.index('emptyState = "loading"'))
         self.assertIn("if not requestId then", request)
 
+    def test_item_flags_use_lua_operator_supported_by_wotlk(self):
+        self.assertNotIn("math.mod", ADDON)
+        self.assertIn("(flags or 0) % (flag * 2) >= flag", ADDON)
+
     def test_failed_transport_call_does_not_leave_pending_request(self):
         self.assertIn("local sent = pcall(SendAddonMessage", ADDON)
         self.assertIn("pending[requestId] = nil", ADDON)
@@ -93,7 +97,7 @@ class AddonContractTest(unittest.TestCase):
 
     def test_targets_wotlk_335a(self):
         self.assertIn("## Interface: 30300", TOC)
-        self.assertIn("## Version: 1.0.2", TOC)
+        self.assertIn("## Version: 1.0.3", TOC)
 
 
 if __name__ == "__main__":

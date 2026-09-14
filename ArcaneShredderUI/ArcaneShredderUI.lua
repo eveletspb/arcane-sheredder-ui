@@ -169,7 +169,7 @@ local function FindPreviewItem(guid)
 end
 
 local function HasFlag(flags, flag)
-    return math.mod(flags or 0, flag * 2) >= flag
+    return (flags or 0) % (flag * 2) >= flag
 end
 
 local function ItemDetails(item, itemLevel)

@@ -123,7 +123,7 @@ Visible chat is not used as the machine protocol. It remains available only for 
 
 ### Preview remains on “Waiting for the server preview”
 
-- Verify that the AddOns list reports Arcane Shredder version `1.0.2` or newer, then run `/reload`.
+- Verify that the AddOns list reports Arcane Shredder version `1.0.3` or newer, then run `/reload`.
 - A sent request must either complete or show a timeout within five seconds. An indefinite loading state means an older addon copy is still installed.
 - If the problem persists, run `/console scriptErrors 1`, reload the UI, and capture the first Lua error.
 
