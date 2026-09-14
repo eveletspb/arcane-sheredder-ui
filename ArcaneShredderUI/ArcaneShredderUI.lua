@@ -145,6 +145,7 @@ local function SendRequest(command, kind)
 end
 
 local function ClearPreview()
+    StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")
     activeToken = nil
     previewItems = {}
     buildingPreview = nil
@@ -556,7 +557,6 @@ local function RequestCancel()
 end
 
 local function ExpirePreview()
-    StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")
     ClearPreview()
     emptyState = "expired"
     SetStatus(L.STATUS_EXPIRED, "error")
@@ -569,6 +569,7 @@ local function RequestConfirm()
             ExpirePreview()
             return
         end
+        StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")
         SendRequest("ashred confirm " .. activeToken, "confirm")
     end
 end

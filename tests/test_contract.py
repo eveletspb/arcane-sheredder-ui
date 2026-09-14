@@ -95,9 +95,22 @@ class AddonContractTest(unittest.TestCase):
         self.assertIn("confirmButton:SetText(string.format(L.CONFIRM_COUNT, #previewItems))", ADDON)
         self.assertIn("confirmTexture:SetVertexColor(0.9, 0.28, 0.22)", ADDON)
 
+    def test_confirmation_popup_is_closed_during_confirm_flow(self):
+        clear_start = ADDON.index("local function ClearPreview()")
+        clear_end = ADDON.index("local function LocationText", clear_start)
+        confirm_start = ADDON.index("local function RequestConfirm()")
+        confirm_end = ADDON.index('StaticPopupDialogs["ARCANE_SHREDDER_CONFIRM"]', confirm_start)
+
+        self.assertIn('StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")', ADDON[clear_start:clear_end])
+        self.assertIn('StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")', ADDON[confirm_start:confirm_end])
+        self.assertLess(
+            ADDON.index('StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")', confirm_start, confirm_end),
+            ADDON.index('SendRequest("ashred confirm "', confirm_start, confirm_end),
+        )
+
     def test_targets_wotlk_335a(self):
         self.assertIn("## Interface: 30300", TOC)
-        self.assertIn("## Version: 1.0.3", TOC)
+        self.assertIn("## Version: 1.0.4", TOC)
 
 
 if __name__ == "__main__":

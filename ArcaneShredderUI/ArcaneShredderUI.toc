@@ -2,7 +2,7 @@
 ## Title: Arcane Shredder
 ## Notes: Safe server-authoritative batch disenchant preview and confirmation.
 ## Author: mod-arcane-shredder
-## Version: 1.0.3
+## Version: 1.0.4
 ## SavedVariables: ArcaneShredderDB
 
 ArcaneShredderUI_Locales.lua
