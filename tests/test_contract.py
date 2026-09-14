@@ -10,7 +10,7 @@ TOC = (ROOT / "ArcaneShredderUI" / "ArcaneShredderUI.toc").read_text(encoding="u
 class AddonContractTest(unittest.TestCase):
     def test_uses_only_hidden_addon_transport(self):
         self.assertIn('local PREFIX = "AzerothCore"', ADDON)
-        self.assertIn("SendAddonMessage(PREFIX", ADDON)
+        self.assertIn("pcall(SendAddonMessage, PREFIX", ADDON)
         self.assertIn("if RegisterAddonMessagePrefix then", ADDON)
         self.assertIn("RegisterAddonMessagePrefix(PREFIX)", ADDON)
         self.assertIn('RegisterEvent("CHAT_MSG_ADDON")', ADDON)
@@ -67,10 +67,25 @@ class AddonContractTest(unittest.TestCase):
     def test_validates_filters_before_preview(self):
         validation_start = ADDON.index("FiltersValid = function()")
         request_start = ADDON.index("local function RequestPreview()")
-        request_end = ADDON.index("\nend\n", request_start)
+        request_end = ADDON.index("local function RequestExclude", request_start)
         self.assertLess(validation_start, request_start)
         self.assertIn("local valid, message = FiltersValid()", ADDON[request_start:request_end])
         self.assertIn("RestoreSafeDefaults", ADDON)
+
+    def test_preview_enters_loading_only_after_request_is_sent(self):
+        request_start = ADDON.index("local function RequestPreview()")
+        request_end = ADDON.index("local function RequestExclude", request_start)
+        request = ADDON[request_start:request_end]
+
+        self.assertIn("local BAG_MASK_BITS = { 2, 4, 8, 16 }", ADDON)
+        self.assertNotIn("math.pow", ADDON)
+        self.assertLess(request.index("local requestId = SendRequest("), request.index('emptyState = "loading"'))
+        self.assertIn("if not requestId then", request)
+
+    def test_failed_transport_call_does_not_leave_pending_request(self):
+        self.assertIn("local sent = pcall(SendAddonMessage", ADDON)
+        self.assertIn("pending[requestId] = nil", ADDON)
+        self.assertIn("SetStatus(L.STATUS_CLIENT_SEND_FAILED", ADDON)
 
     def test_destructive_action_shows_preview_item_count(self):
         self.assertIn("confirmButton:SetText(string.format(L.CONFIRM_COUNT, #previewItems))", ADDON)
@@ -78,7 +93,7 @@ class AddonContractTest(unittest.TestCase):
 
     def test_targets_wotlk_335a(self):
         self.assertIn("## Interface: 30300", TOC)
-        self.assertIn("## Version: 1.0.1", TOC)
+        self.assertIn("## Version: 1.0.2", TOC)
 
 
 if __name__ == "__main__":

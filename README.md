@@ -121,6 +121,12 @@ Visible chat is not used as the machine protocol. It remains available only for 
 - Check the character's Enchanting skill and Disenchant spell.
 - Remember that server policy may reject Rare, Epic, refundable, temporarily tradeable, enchanted, socketed, protected, or high-item-level gear.
 
+### Preview remains on “Waiting for the server preview”
+
+- Verify that the AddOns list reports Arcane Shredder version `1.0.2` or newer, then run `/reload`.
+- A sent request must either complete or show a timeout within five seconds. An indefinite loading state means an older addon copy is still installed.
+- If the problem persists, run `/console scriptErrors 1`, reload the UI, and capture the first Lua error.
+
 ## Development checks
 
 From the repository root:

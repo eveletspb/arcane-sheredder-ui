@@ -6,6 +6,7 @@ local PROTOCOL_VERSION = 1
 local REQUEST_TIMEOUT = 5
 local ROW_COUNT = 7
 local ROW_HEIGHT = 38
+local BAG_MASK_BITS = { 2, 4, 8, 16 }
 
 local pending = {}
 local nextRequestId = 0
@@ -132,7 +133,13 @@ local function SendRequest(command, kind)
         kind = kind,
         deadline = GetTime() + (kind == "confirm" and 30 or REQUEST_TIMEOUT),
     }
-    SendAddonMessage(PREFIX, payload, "WHISPER", UnitName("player"))
+    local sent = pcall(SendAddonMessage, PREFIX, payload, "WHISPER", UnitName("player"))
+    if not sent then
+        pending[requestId] = nil
+        SetStatus(L.STATUS_CLIENT_SEND_FAILED, "error")
+        UpdateButtons()
+        return nil
+    end
     UpdateButtons()
     return requestId
 end
@@ -497,10 +504,6 @@ local function RequestPreview()
         return
     end
 
-    ClearPreview()
-    emptyState = "loading"
-    RebuildRows()
-
     local qualityMask = 0
     if ArcaneShredderDB.uncommon then qualityMask = qualityMask + 4 end
     if ArcaneShredderDB.rare then qualityMask = qualityMask + 8 end
@@ -513,15 +516,31 @@ local function RequestPreview()
     local bagMask = ArcaneShredderDB.backpack and 1 or 0
     for index = 1, 4 do
         if ArcaneShredderDB["bag" .. index] then
-            bagMask = bagMask + math.pow(2, index)
+            bagMask = bagMask + BAG_MASK_BITS[index]
         end
     end
 
-    local maxItemLevel = math.floor(math.max(0, math.min(1000, ArcaneShredderDB.maxItemLevel)))
+    local maxItemLevel = ArcaneShredderDB.maxItemLevel
+    if maxItemLevel < 0 then
+        maxItemLevel = 0
+    elseif maxItemLevel > 1000 then
+        maxItemLevel = 1000
+    end
+    maxItemLevel = math.floor(maxItemLevel)
     ArcaneShredderDB.maxItemLevel = maxItemLevel
     controls.maxItemLevel:SetText(tostring(maxItemLevel))
+
+    local requestId = SendRequest(
+        string.format("ashred preview %d %d %d %d", qualityMask, maxItemLevel, bindingMask, bagMask),
+        "preview")
+    if not requestId then
+        return
+    end
+
+    ClearPreview()
+    emptyState = "loading"
     SetStatus(L.STATUS_CONNECTING, nil)
-    SendRequest(string.format("ashred preview %d %d %d %d", qualityMask, maxItemLevel, bindingMask, bagMask), "preview")
+    RebuildRows()
 end
 
 local function RequestExclude(item)
