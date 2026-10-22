@@ -657,6 +657,7 @@ end
 
 local function CreateWindow()
     window = CreateFrame("Frame", "ArcaneShredderFrame", UIParent)
+    window:Hide()
     window:SetWidth(700)
     window:SetHeight(680)
     window:SetPoint(ArcaneShredderDB.point or "CENTER", UIParent, ArcaneShredderDB.relativePoint or "CENTER",
@@ -881,7 +882,6 @@ local function CreateWindow()
     SelectMode(selectedMode)
     SetStatus(L.STATUS_CONNECTING, nil)
 
-    window:Hide()
     RebuildRows()
 end
 
