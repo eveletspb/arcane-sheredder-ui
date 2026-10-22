@@ -1,8 +1,8 @@
 ## Interface: 30300
 ## Title: Arcane Shredder
-## Notes: Safe server-authoritative batch disenchant preview and confirmation.
+## Notes: Safe server-authoritative batch disenchant and lockbox unlocking.
 ## Author: mod-arcane-shredder
-## Version: 1.0.4
+## Version: 1.1.0
 ## SavedVariables: ArcaneShredderDB
 
 ArcaneShredderUI_Locales.lua

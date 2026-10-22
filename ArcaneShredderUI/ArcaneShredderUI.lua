@@ -2,7 +2,7 @@ local Addon = CreateFrame("Frame")
 local L = ArcaneShredderL
 
 local PREFIX = "AzerothCore"
-local PROTOCOL_VERSION = 1
+local PROTOCOL_VERSION = 2
 local REQUEST_TIMEOUT = 5
 local ROW_COUNT = 7
 local ROW_HEIGHT = 38
@@ -13,6 +13,8 @@ local nextRequestId = 0
 local connected = false
 local helloScheduledAt = nil
 local activeToken = nil
+local activeMode = nil
+local selectedMode = "DISENCHANT"
 local previewItems = {}
 local buildingPreview = nil
 local previewExpiresAt = nil
@@ -31,6 +33,7 @@ local cancelButton
 local scrollFrame
 local rows = {}
 local controls = {}
+local tabs = {}
 local FiltersValid
 
 local function SetStatus(text, state)
@@ -70,6 +73,9 @@ local function SetFiltersEnabled(enabled)
             controls[name]:Disable()
         end
     end
+    for _, tab in pairs(tabs) do
+        if enabled then tab:Enable() else tab:Disable() end
+    end
 end
 
 local function UpdateButtons()
@@ -94,9 +100,17 @@ local function UpdateButtons()
     end
 
     if activeToken and #previewItems > 0 then
-        confirmButton:SetText(string.format(L.CONFIRM_COUNT, #previewItems))
+        confirmButton:SetText(string.format(activeMode == "OPEN" and L.OPEN_COUNT or L.CONFIRM_COUNT, #previewItems))
     else
-        confirmButton:SetText(L.CONFIRM)
+        confirmButton:SetText(selectedMode == "OPEN" and L.OPEN or L.CONFIRM)
+    end
+    local confirmTexture = confirmButton:GetNormalTexture()
+    if confirmTexture then
+        if (activeMode or selectedMode) == "OPEN" then
+            confirmTexture:SetVertexColor(0.35, 0.75, 1)
+        else
+            confirmTexture:SetVertexColor(0.9, 0.28, 0.22)
+        end
     end
     SetFiltersEnabled(not activeToken and not buildingPreview and not busy)
 end
@@ -147,6 +161,7 @@ end
 local function ClearPreview()
     StaticPopup_Hide("ARCANE_SHREDDER_CONFIRM")
     activeToken = nil
+    activeMode = nil
     previewItems = {}
     buildingPreview = nil
     previewExpiresAt = nil
@@ -195,12 +210,12 @@ local function EmptyStateText()
     if emptyState == "cancelled" then return L.EMPTY_CANCELLED end
     if emptyState == "completed" then return L.EMPTY_COMPLETED end
     if emptyState == "expired" then return L.EMPTY_EXPIRED end
-    return L.EMPTY_START
+    return selectedMode == "OPEN" and L.EMPTY_OPEN_START or L.EMPTY_START
 end
 
 local function UpdateSummary()
     if activeToken then
-        summaryText:SetText(string.format(L.SUMMARY_COUNT, #previewItems))
+        summaryText:SetText(string.format(activeMode == "OPEN" and L.SUMMARY_OPEN or L.SUMMARY_COUNT, #previewItems))
         local seconds = math.max(0, math.ceil((previewExpiresAt or GetTime()) - GetTime()))
         expiryText:SetText(string.format(L.EXPIRES_IN, seconds))
     else
@@ -269,6 +284,7 @@ local function CommitBuildingPreview()
 
     local preview = buildingPreview
     activeToken = buildingPreview.token
+    activeMode = buildingPreview.mode
     previewItems = buildingPreview.items
     previewExpiresAt = buildingPreview.expiresAt
     buildingPreview = nil
@@ -276,12 +292,18 @@ local function CommitBuildingPreview()
     if preview.truncatedTotal then
         SetStatus(string.format(L.STATUS_TRUNCATED, #previewItems, preview.truncatedTotal), "warning")
     else
-        SetStatus(string.format(L.STATUS_PREVIEW, #previewItems), "success")
+        SetStatus(string.format(activeMode == "OPEN" and L.STATUS_OPEN_PREVIEW or L.STATUS_PREVIEW, #previewItems), "success")
     end
     RebuildRows()
 end
 
 local function LocalizeError(code)
+    if (activeMode == "OPEN" or selectedMode == "OPEN") and code == "SPELL_MISSING" then
+        return L.OPEN_SPELL_MISSING
+    end
+    if (activeMode == "OPEN" or selectedMode == "OPEN") and code == "SKILL_TOO_LOW" then
+        return L.OPEN_SKILL_TOO_LOW
+    end
     return L.ERRORS[code] or code
 end
 
@@ -319,9 +341,14 @@ local function ParseRecord(body)
             token = fields[3],
             expiresAt = GetTime() + ttl,
             expected = expected,
+            mode = fields[6],
             items = {},
             ended = false,
         }
+        if buildingPreview.mode ~= selectedMode then
+            buildingPreview = nil
+            return
+        end
     elseif record == "ITEM" then
         if not buildingPreview or fields[3] ~= buildingPreview.token then
             return
@@ -372,12 +399,16 @@ local function ParseRecord(body)
         SetStatus(string.format(L.STATUS_SKIPPED, LocalizeError(fields[4] or "SKIPPED")), "warning")
     elseif record == "RESULT" then
         if fields[3] == activeToken then
+            local resultMode = activeMode
             local completed = tonumber(fields[4]) or 0
             local skipped = tonumber(fields[5]) or 0
             local mailed = tonumber(fields[6]) or 0
             ClearPreview()
             emptyState = "completed"
-            SetStatus(string.format(L.STATUS_RESULT, completed, skipped, mailed), skipped > 0 and "warning" or "success")
+            local resultText = resultMode == "OPEN"
+                and string.format(L.STATUS_OPEN_RESULT, completed, skipped)
+                or string.format(L.STATUS_RESULT, completed, skipped, mailed)
+            SetStatus(resultText, skipped > 0 and "warning" or "success")
             RebuildRows()
         end
     elseif record == "STATUS" then
@@ -448,7 +479,7 @@ local function SaveFilters()
 end
 
 FiltersValid = function()
-    if not (controls.uncommon:GetChecked() or controls.rare:GetChecked() or controls.epic:GetChecked()) then
+    if selectedMode == "DISENCHANT" and not (controls.uncommon:GetChecked() or controls.rare:GetChecked() or controls.epic:GetChecked()) then
         return false, L.FILTER_NEED_QUALITY
     end
     if not (controls.unbound:GetChecked() or controls.soulbound:GetChecked()) then
@@ -531,9 +562,10 @@ local function RequestPreview()
     ArcaneShredderDB.maxItemLevel = maxItemLevel
     controls.maxItemLevel:SetText(tostring(maxItemLevel))
 
-    local requestId = SendRequest(
-        string.format("ashred preview %d %d %d %d", qualityMask, maxItemLevel, bindingMask, bagMask),
-        "preview")
+    local command = selectedMode == "OPEN"
+        and string.format("ashred openpreview %d %d", bindingMask, bagMask)
+        or string.format("ashred preview %d %d %d %d", qualityMask, maxItemLevel, bindingMask, bagMask)
+    local requestId = SendRequest(command, "preview")
     if not requestId then
         return
     end
@@ -585,6 +617,28 @@ StaticPopupDialogs["ARCANE_SHREDDER_CONFIRM"] = {
     preferredIndex = 3,
 }
 
+local function SelectMode(mode)
+    if activeToken or buildingPreview or HasPendingRequest() then return end
+    selectedMode = mode
+    ArcaneShredderDB.mode = mode
+    for tabMode, tab in pairs(tabs) do
+        if tabMode == mode then PanelTemplates_SelectTab(tab) else PanelTemplates_DeselectTab(tab) end
+    end
+    local disenchant = mode == "DISENCHANT"
+    for _, name in ipairs({ "qualityLabel", "uncommon", "rare", "epic", "itemLevelLabel", "maxItemLevel" }) do
+        if disenchant then controls[name]:Show() else controls[name]:Hide() end
+    end
+    if disenchant then
+        controls.openHint:Hide()
+        controls.openNote:Hide()
+    else
+        controls.openHint:Show()
+        controls.openNote:Show()
+    end
+    ShowReadyStatus()
+    RebuildRows()
+end
+
 local function CreateLabel(parent, text, x, y)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", x, y)
@@ -604,7 +658,7 @@ end
 local function CreateWindow()
     window = CreateFrame("Frame", "ArcaneShredderFrame", UIParent)
     window:SetWidth(700)
-    window:SetHeight(640)
+    window:SetHeight(680)
     window:SetPoint(ArcaneShredderDB.point or "CENTER", UIParent, ArcaneShredderDB.relativePoint or "CENTER",
         ArcaneShredderDB.x or 0, ArcaneShredderDB.y or 0)
     window:SetFrameStrata("DIALOG")
@@ -642,8 +696,19 @@ local function CreateWindow()
     safetyText:SetTextColor(0.65, 0.82, 1)
 
     statusFrame = CreateFrame("Frame", nil, window)
-    statusFrame:SetPoint("TOPLEFT", 18, -62)
-    statusFrame:SetPoint("TOPRIGHT", -18, -62)
+    tabs.DISENCHANT = CreateFrame("Button", "ArcaneShredderDisenchantTab", window, "CharacterFrameTabButtonTemplate")
+    tabs.DISENCHANT:SetPoint("TOPLEFT", 20, -55)
+    tabs.DISENCHANT:SetText(L.TAB_DISENCHANT)
+    PanelTemplates_TabResize(tabs.DISENCHANT, 0)
+    tabs.DISENCHANT:SetScript("OnClick", function() SelectMode("DISENCHANT") end)
+    tabs.OPEN = CreateFrame("Button", "ArcaneShredderOpenTab", window, "CharacterFrameTabButtonTemplate")
+    tabs.OPEN:SetPoint("LEFT", tabs.DISENCHANT, "RIGHT", -8, 0)
+    tabs.OPEN:SetText(L.TAB_OPEN)
+    PanelTemplates_TabResize(tabs.OPEN, 0)
+    tabs.OPEN:SetScript("OnClick", function() SelectMode("OPEN") end)
+
+    statusFrame:SetPoint("TOPLEFT", 18, -94)
+    statusFrame:SetPoint("TOPRIGHT", -18, -94)
     statusFrame:SetHeight(32)
     statusFrame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -659,8 +724,8 @@ local function CreateWindow()
     statusText:SetJustifyH("LEFT")
 
     local filterPanel = CreateFrame("Frame", nil, window)
-    filterPanel:SetPoint("TOPLEFT", 18, -104)
-    filterPanel:SetPoint("TOPRIGHT", -18, -104)
+    filterPanel:SetPoint("TOPLEFT", 18, -136)
+    filterPanel:SetPoint("TOPRIGHT", -18, -136)
     filterPanel:SetHeight(128)
     filterPanel:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -672,7 +737,10 @@ local function CreateWindow()
     })
     filterPanel:SetBackdropColor(0.04, 0.04, 0.04, 0.72)
 
-    CreateLabel(filterPanel, L.QUALITY, 12, -12)
+    controls.qualityLabel = CreateLabel(filterPanel, L.QUALITY, 12, -12)
+    controls.openHint = CreateLabel(filterPanel, L.OPEN_HINT, 12, -14)
+    controls.openHint:SetWidth(325)
+    controls.openHint:SetJustifyH("LEFT")
     controls.uncommon = CreateCheck(filterPanel, "ArcaneShredderUncommon", L.UNCOMMON, 6, -27, ArcaneShredderDB.uncommon)
     controls.rare = CreateCheck(filterPanel, "ArcaneShredderRare", L.RARE, 126, -27, ArcaneShredderDB.rare)
     controls.epic = CreateCheck(filterPanel, "ArcaneShredderEpic", L.EPIC, 226, -27, ArcaneShredderDB.epic)
@@ -688,7 +756,8 @@ local function CreateWindow()
             126 + (index - 1) * 98, -74, ArcaneShredderDB["bag" .. index])
     end
 
-    CreateLabel(filterPanel, L.MAX_ITEM_LEVEL, 12, -111)
+    controls.itemLevelLabel = CreateLabel(filterPanel, L.MAX_ITEM_LEVEL, 12, -111)
+    controls.openNote = CreateLabel(filterPanel, L.OPEN_NOTE, 12, -111)
     controls.maxItemLevel = CreateFrame("EditBox", "ArcaneShredderMaxItemLevel", filterPanel, "InputBoxTemplate")
     controls.maxItemLevel:SetPoint("BOTTOMLEFT", 245, 6)
     controls.maxItemLevel:SetWidth(60)
@@ -710,13 +779,13 @@ local function CreateWindow()
     controls.defaults:SetScript("OnClick", RestoreSafeDefaults)
 
     summaryText = window:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    summaryText:SetPoint("TOPLEFT", 23, -247)
+    summaryText:SetPoint("TOPLEFT", 23, -279)
     expiryText = window:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    expiryText:SetPoint("TOPRIGHT", -43, -247)
+    expiryText:SetPoint("TOPRIGHT", -43, -279)
     expiryText:SetJustifyH("RIGHT")
 
     local listBackground = CreateFrame("Frame", nil, window)
-    listBackground:SetPoint("TOPLEFT", 18, -266)
+    listBackground:SetPoint("TOPLEFT", 18, -298)
     listBackground:SetPoint("BOTTOMRIGHT", -38, 93)
     listBackground:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -799,13 +868,9 @@ local function CreateWindow()
     confirmButton:SetPoint("BOTTOM", 0, 42)
     confirmButton:SetText(L.CONFIRM)
     confirmButton:SetScript("OnClick", function()
+        StaticPopupDialogs["ARCANE_SHREDDER_CONFIRM"].text = activeMode == "OPEN" and L.OPEN_CONFIRM_TEXT or L.CONFIRM_TEXT
         StaticPopup_Show("ARCANE_SHREDDER_CONFIRM", #previewItems)
     end)
-    local confirmTexture = confirmButton:GetNormalTexture()
-    if confirmTexture then
-        confirmTexture:SetVertexColor(0.9, 0.28, 0.22)
-    end
-
     cancelButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
     cancelButton:SetWidth(135)
     cancelButton:SetHeight(30)
@@ -813,6 +878,7 @@ local function CreateWindow()
     cancelButton:SetText(L.CANCEL)
     cancelButton:SetScript("OnClick", RequestCancel)
 
+    SelectMode(selectedMode)
     SetStatus(L.STATUS_CONNECTING, nil)
 
     window:Hide()
@@ -835,6 +901,7 @@ local function InitializeDatabase()
         end
     end
     ArcaneShredderDB.maxItemLevel = tonumber(ArcaneShredderDB.maxItemLevel) or 0
+    selectedMode = ArcaneShredderDB.mode == "OPEN" and "OPEN" or "DISENCHANT"
 end
 
 local function SendHello()

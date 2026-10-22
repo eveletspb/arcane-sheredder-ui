@@ -42,6 +42,7 @@ class AddonContractTest(unittest.TestCase):
         for command in (
             "ashred hello ",
             "ashred preview ",
+            "ashred openpreview ",
             "ashred exclude ",
             "ashred cancel ",
             "ashred confirm ",
@@ -92,8 +93,15 @@ class AddonContractTest(unittest.TestCase):
         self.assertIn("SetStatus(L.STATUS_CLIENT_SEND_FAILED", ADDON)
 
     def test_destructive_action_shows_preview_item_count(self):
-        self.assertIn("confirmButton:SetText(string.format(L.CONFIRM_COUNT, #previewItems))", ADDON)
+        self.assertIn('activeMode == "OPEN" and L.OPEN_COUNT or L.CONFIRM_COUNT, #previewItems', ADDON)
         self.assertIn("confirmTexture:SetVertexColor(0.9, 0.28, 0.22)", ADDON)
+
+    def test_lockbox_tab_uses_server_mode_and_disables_quality_filter(self):
+        self.assertIn('string.format("ashred openpreview %d %d", bindingMask, bagMask)', ADDON)
+        self.assertIn('mode = fields[6]', ADDON)
+        self.assertIn('buildingPreview.mode ~= selectedMode', ADDON)
+        self.assertIn('selectedMode == "DISENCHANT" and not', ADDON)
+        self.assertIn('PanelTemplates_SelectTab(tab)', ADDON)
 
     def test_confirmation_popup_is_closed_during_confirm_flow(self):
         clear_start = ADDON.index("local function ClearPreview()")
@@ -110,7 +118,7 @@ class AddonContractTest(unittest.TestCase):
 
     def test_targets_wotlk_335a(self):
         self.assertIn("## Interface: 30300", TOC)
-        self.assertIn("## Version: 1.0.4", TOC)
+        self.assertIn("## Version: 1.1.0", TOC)
 
 
 if __name__ == "__main__":
